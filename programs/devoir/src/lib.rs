@@ -125,11 +125,12 @@ pub struct ExchangeProperty<'info> {
 pub struct User {
     pub properties: Vec<Pubkey>,
     pub last_transaction: i64,
+    pub penalty_cooldown: bool,
 }
 
 impl User {
     // Estimated size (adjust if needed)
-    const SIZE: usize = 4 + (4 + 4 * 32) + 8;
+    const SIZE: usize = 4 + (4 + 4 * 32) + 8 + 1;
 }
 
 #[account]
@@ -161,5 +162,9 @@ impl Metadata {
 pub enum ErrorCode {
     #[msg("User already owns the maximum number of properties allowed.")]
     MaxPropertiesReached,
+    #[msg("Must wait for normal cooldown period (5 minutes) to elapse.")]
+    NormalCooldownActive,
+    #[msg("Must wait for penalty cooldown period (10 minutes) to elapse.")]
+    PenaltyCooldownActivated,
 }
 

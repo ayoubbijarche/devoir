@@ -217,6 +217,26 @@ describe("Devoir Smart Contract", () => {
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
   it("montre les limites de transfert et la possession de propriétés", async () => {
+    // Utiliser un nouvel utilisateur pour ce test
+    const testWallet = anchor.web3.Keypair.generate();
+    const testAccount = anchor.web3.Keypair.generate();
+
+    // Airdrop SOL au nouveau wallet
+    const airdrop = await provider.connection.requestAirdrop(
+      testWallet.publicKey,
+      anchor.web3.LAMPORTS_PER_SOL * 10
+    );
+    await provider.connection.confirmTransaction(airdrop);
+
+    // Initialiser le compte utilisateur
+    await program.methods.initializeUser()
+      .accounts({
+        user: testAccount.publicKey,
+        userSigner: testWallet.publicKey,
+      })
+      .signers([testWallet, testAccount])
+      .rpc();
+
     console.log("\n=== Test des Limites de Transfert de Propriétés ===");
     
     // Création de 4 propriétés pour user1 (Alice)
@@ -332,6 +352,278 @@ describe("Devoir Smart Contract", () => {
       console.log("• Tentative de dépassement bloquée");
       console.log("----------------------------------------");
     }
+  });
+
+  it("applique le cooldown normal de 5 minutes", async () => {
+    // Utiliser un nouvel utilisateur pour ce test
+    const testWallet = anchor.web3.Keypair.generate();
+    const testAccount = anchor.web3.Keypair.generate();
+
+    // Airdrop SOL au nouveau wallet
+    const airdropTx = await provider.connection.requestAirdrop(
+      testWallet.publicKey,
+      10 * anchor.web3.LAMPORTS_PER_SOL
+    );
+    await provider.connection.confirmTransaction(airdropTx);
+
+    // Initialiser le compte utilisateur
+    await program.methods.initializeUser()
+      .accounts({
+        user: testAccount.publicKey,
+        userSigner: testWallet.publicKey,
+      })
+      .signers([testWallet, testAccount])
+      .rpc();
+
+    const propertyAccount = anchor.web3.Keypair.generate();
+    const metadata = {
+      name: "Test Cooldown Property",
+      propertyType: "Residential",
+      value: new anchor.BN(500000),
+      ipfsHash: "QmExampleHash",
+    };
+
+    console.log("\n=== Test du Cooldown Normal (5 minutes) ===");
+    
+    // Première transaction
+    await program.methods.mintProperty(metadata)
+      .accounts({
+        user: testAccount.publicKey,
+        property: propertyAccount.publicKey,
+        userSigner: testWallet.publicKey,
+      })
+      .signers([testWallet, propertyAccount])
+      .rpc();
+
+    console.log("✅ Première transaction réussie");
+
+    // Attendre 1 seconde
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Tentative immédiate (devrait échouer)
+    const propertyAccount2 = anchor.web3.Keypair.generate();
+    try {
+      await program.methods.mintProperty(metadata)
+        .accounts({
+          user: testAccount.publicKey,
+          property: propertyAccount2.publicKey,
+          userSigner: testWallet.publicKey,
+        })
+        .signers([testWallet, propertyAccount2])
+        .rpc();
+      assert.fail("La transaction aurait dû échouer");
+    } catch (error) {
+      console.log("✅ Transaction bloquée - Cooldown normal actif");
+    }
+
+    // Attendre que le cooldown soit passé (3 secondes en mode test)
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // La transaction devrait maintenant réussir
+    const propertyAccount3 = anchor.web3.Keypair.generate();
+    await program.methods.mintProperty(metadata)
+      .accounts({
+        user: testAccount.publicKey,
+        property: propertyAccount3.publicKey,
+        userSigner: testWallet.publicKey,
+      })
+      .signers([testWallet, propertyAccount3])
+      .rpc();
+
+    console.log("✅ Transaction réussie après le cooldown");
+  });
+
+  it("applique la pénalité de 10 minutes en cas de non-respect du cooldown", async () => {
+    // Utiliser un nouvel utilisateur pour ce test
+    const testWallet = anchor.web3.Keypair.generate();
+    const testAccount = anchor.web3.Keypair.generate();
+
+    // Airdrop SOL au nouveau wallet
+    const airdropTx = await provider.connection.requestAirdrop(
+      testWallet.publicKey,
+      10 * anchor.web3.LAMPORTS_PER_SOL
+    );
+    await provider.connection.confirmTransaction(airdropTx);
+
+    // Initialiser le compte utilisateur
+    await program.methods.initializeUser()
+      .accounts({
+        user: testAccount.publicKey,
+        userSigner: testWallet.publicKey,
+      })
+      .signers([testWallet, testAccount])
+      .rpc();
+
+    const propertyAccount = anchor.web3.Keypair.generate();
+    const metadata = {
+      name: "Test Penalty Property",
+      propertyType: "Residential",
+      value: new anchor.BN(500000),
+      ipfsHash: "QmExampleHash",
+    };
+
+    console.log("\n=== Test de la Pénalité de Cooldown (10 minutes) ===");
+    
+    // Première transaction
+    await program.methods.mintProperty(metadata)
+      .accounts({
+        user: testAccount.publicKey,
+        property: propertyAccount.publicKey,
+        userSigner: testWallet.publicKey,
+      })
+      .signers([testWallet, propertyAccount])
+      .rpc();
+
+    console.log("✅ Première transaction réussie");
+
+    // Tentative pendant le cooldown (devrait échouer)
+    const propertyAccount2 = anchor.web3.Keypair.generate();
+    try {
+      await program.methods.mintProperty(metadata)
+        .accounts({
+          user: testAccount.publicKey,
+          property: propertyAccount2.publicKey,
+          userSigner: testWallet.publicKey,
+        })
+        .signers([testWallet, propertyAccount2])
+        .rpc();
+      assert.fail("La transaction aurait dû échouer");
+    } catch (error) {
+      console.log("✅ Transaction bloquée - Pénalité activée");
+    }
+
+    // Attendre moins que la pénalité (2 secondes)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Tentative pendant la pénalité (devrait échouer)
+    const propertyAccount3 = anchor.web3.Keypair.generate();
+    try {
+      await program.methods.mintProperty(metadata)
+        .accounts({
+          user: testAccount.publicKey,
+          property: propertyAccount3.publicKey,
+          userSigner: testWallet.publicKey,
+        })
+        .signers([testWallet, propertyAccount3])
+        .rpc();
+      assert.fail("La transaction aurait dû échouer");
+    } catch (error) {
+      console.log("✅ Transaction bloquée - Pénalité toujours active");
+    }
+
+    // Attendre que la pénalité soit passée (4 secondes supplémentaires)
+    await new Promise(resolve => setTimeout(resolve, 4000));
+
+    // La transaction devrait maintenant réussir
+    const propertyAccount4 = anchor.web3.Keypair.generate();
+    await program.methods.mintProperty(metadata)
+      .accounts({
+        user: testAccount.publicKey,
+        property: propertyAccount4.publicKey,
+        userSigner: testWallet.publicKey,
+      })
+      .signers([testWallet, propertyAccount4])
+      .rpc();
+
+    console.log("✅ Transaction réussie après la pénalité");
+  });
+
+  it("applique le cooldown de 5 minutes entre les transferts de propriétés", async () => {
+    // Créer deux nouveaux utilisateurs pour le test
+    const user1Wallet = anchor.web3.Keypair.generate();
+    const user1Account = anchor.web3.Keypair.generate();
+    const user2Wallet = anchor.web3.Keypair.generate();
+    const user2Account = anchor.web3.Keypair.generate();
+
+    // Airdrop SOL aux wallets
+    for (const wallet of [user1Wallet, user2Wallet]) {
+      const airdrop = await provider.connection.requestAirdrop(
+        wallet.publicKey,
+        10 * anchor.web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(airdrop);
+    }
+
+    // Initialiser les comptes utilisateurs
+    for (const [wallet, account] of [[user1Wallet, user1Account], [user2Wallet, user2Account]]) {
+      await program.methods.initializeUser()
+        .accounts({
+          user: account.publicKey,
+          userSigner: wallet.publicKey,
+        })
+        .signers([wallet, account])
+        .rpc();
+    }
+
+    console.log("\n=== Test du Cooldown entre Transferts de Propriétés ===");
+
+    // Créer une propriété pour user1
+    const propertyAccount = anchor.web3.Keypair.generate();
+    const metadata = {
+      name: "Test Transfer Property",
+      propertyType: "Residential",
+      value: new anchor.BN(500000),
+      ipfsHash: "QmExampleHash",
+    };
+
+    await program.methods.mintProperty(metadata)
+      .accounts({
+        user: user1Account.publicKey,
+        property: propertyAccount.publicKey,
+        userSigner: user1Wallet.publicKey,
+      })
+      .signers([user1Wallet, propertyAccount])
+      .rpc();
+
+    console.log("✅ Propriété créée");
+
+    // Premier transfert
+    await program.methods.exchangeProperty()
+      .accounts({
+        sender: user1Account.publicKey,
+        receiver: user2Account.publicKey,
+        property: propertyAccount.publicKey,
+        senderSigner: user1Wallet.publicKey,
+        receiverSigner: user2Wallet.publicKey,
+      })
+      .signers([user1Wallet, user2Wallet])
+      .rpc();
+
+    console.log("✅ Premier transfert réussi");
+
+    // Tentative de transfert immédiat (devrait échouer)
+    try {
+      await program.methods.exchangeProperty()
+        .accounts({
+          sender: user2Account.publicKey,
+          receiver: user1Account.publicKey,
+          property: propertyAccount.publicKey,
+          senderSigner: user2Wallet.publicKey,
+          receiverSigner: user1Wallet.publicKey,
+        })
+        .signers([user2Wallet, user1Wallet])
+        .rpc();
+      assert.fail("Le transfert immédiat aurait dû échouer");
+    } catch (error) {
+      console.log("✅ Transfert immédiat bloqué comme prévu (cooldown actif)");
+    }
+
+    // Attendre le délai de cooldown (2 secondes en mode test)
+    await sleep(10000);
+
+    // Le transfert devrait maintenant réussir
+    await program.methods.exchangeProperty()
+      .accounts({
+        sender: user2Account.publicKey,
+        receiver: user1Account.publicKey,
+        property: propertyAccount.publicKey,
+        senderSigner: user2Wallet.publicKey,
+        receiverSigner: user1Wallet.publicKey,
+      })
+      .signers([user2Wallet, user1Wallet])
+      .rpc();
+
+    console.log("✅ Transfert réussi après le cooldown");
   });
 });
 
