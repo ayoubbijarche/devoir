@@ -1,8 +1,10 @@
 [toolchain]
 
 [features]
-resolution = true
+seeds = false
 skip-lint = false
+[features.test-mode]
+activate = true
 
 [programs.localnet]
 devoir = "7uqsm1zerKBe5wb8cWSYrddz9bJUFb7GghMXcZTdGXZC"
