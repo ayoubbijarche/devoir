@@ -20,3 +20,29 @@
 - Programme développé avec Anchor Framework
 - Utilise les comptes Solana pour stocker les données
 - Tests complets inclus
+
+## to run install anchor cli at
+- https://www.anchor-lang.com/docs/installation
+- 
+## rust at 
+- https://www.rust-lang.org/tools/install
+- 
+## solana cli at
+- https://solana.com/docs/intro/installation
+- 
+## nodejs cli at
+- https://nodejs.org/en
+- 
+## install yarn using
+- sudo npm install -g yarn
+- 
+## more importantly use UnixLike OS
+- linux
+- macos
+- 
+## step one :
+- enter to directory /devoir/
+- run yarn install
+- run anchor test
+
+### done!
